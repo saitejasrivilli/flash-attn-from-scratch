@@ -31,7 +31,6 @@ import torch
 import triton
 import triton.language as tl
 
-
 # ---------------------------------------------------------------------------
 # Modified forward kernel that also writes L = m + log(l)
 # ---------------------------------------------------------------------------

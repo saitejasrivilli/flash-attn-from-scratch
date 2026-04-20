@@ -18,19 +18,19 @@ Usage
 
 import argparse
 import json
-import time
-import sys
 import os
+import sys
+import time
 
 import torch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import llm_kernels
 
-
 # ---------------------------------------------------------------------------
 # Timing primitive
 # ---------------------------------------------------------------------------
+
 
 def bench_fn(fn, warmup: int = 10, reps: int = 100) -> float:
     """Returns milliseconds per call (GPU time via synchronize)."""
@@ -41,12 +41,13 @@ def bench_fn(fn, warmup: int = 10, reps: int = 100) -> float:
     for _ in range(reps):
         fn()
     torch.cuda.synchronize()
-    return (time.perf_counter() - t0) * 1e3 / reps   # ms per call
+    return (time.perf_counter() - t0) * 1e3 / reps  # ms per call
 
 
 # ---------------------------------------------------------------------------
 # Flash Attention
 # ---------------------------------------------------------------------------
+
 
 def bench_flash_attn(warmup, reps):
     results = []
@@ -61,14 +62,19 @@ def bench_flash_attn(warmup, reps):
         # FLOPs: QK^T (2*M*N*D) + softmax*V (2*M*N*D) = 4*M*N*D, times B*H
         flops = 4 * B * H * seqlen * seqlen * D
 
-        ms_triton = bench_fn(lambda: llm_kernels.flash_attn_forward(q, k, v), warmup, reps)
-        ms_sdpa   = bench_fn(
-            lambda: torch.nn.functional.scaled_dot_product_attention(q, k, v, is_causal=True),
-            warmup, reps,
+        ms_triton = bench_fn(
+            lambda: llm_kernels.flash_attn_forward(q, k, v), warmup, reps
+        )
+        ms_sdpa = bench_fn(
+            lambda: torch.nn.functional.scaled_dot_product_attention(
+                q, k, v, is_causal=True
+            ),
+            warmup,
+            reps,
         )
 
-        tflops_triton = flops / ms_triton / 1e9   # ms → s, flops → TFLOP
-        tflops_sdpa   = flops / ms_sdpa   / 1e9
+        tflops_triton = flops / ms_triton / 1e9  # ms → s, flops → TFLOP
+        tflops_sdpa = flops / ms_sdpa / 1e9
         ratio = tflops_triton / tflops_sdpa * 100
 
         row = {
@@ -78,8 +84,10 @@ def bench_flash_attn(warmup, reps):
             "vs_baseline": f"{ratio:.0f}% of torch SDPA",
         }
         results.append(row)
-        print(f"  seqlen={seqlen:4d}: {tflops_triton:.1f} TFLOP/s  "
-              f"(torch SDPA: {tflops_sdpa:.1f} TFLOP/s, ratio: {ratio:.0f}%)")
+        print(
+            f"  seqlen={seqlen:4d}: {tflops_triton:.1f} TFLOP/s  "
+            f"(torch SDPA: {tflops_sdpa:.1f} TFLOP/s, ratio: {ratio:.0f}%)"
+        )
 
     return results
 
@@ -88,19 +96,26 @@ def bench_flash_attn(warmup, reps):
 # Fused RMSNorm + Linear
 # ---------------------------------------------------------------------------
 
+
 def bench_fused_rmsnorm(warmup, reps):
     results = []
     print("\n=== Fused RMSNorm + Linear ===")
 
     for B, D_in, D_out in [(512, 4096, 4096), (128, 8192, 8192), (1024, 2048, 2048)]:
-        x      = torch.randn(B, D_in,       device="cuda", dtype=torch.float16)
-        w_norm = torch.ones(D_in,           device="cuda", dtype=torch.float16)
-        w_lin  = torch.randn(D_out, D_in,   device="cuda", dtype=torch.float16)
+        x = torch.randn(B, D_in, device="cuda", dtype=torch.float16)
+        w_norm = torch.ones(D_in, device="cuda", dtype=torch.float16)
+        w_lin = torch.randn(D_out, D_in, device="cuda", dtype=torch.float16)
 
-        rms_layer = torch.nn.Linear(D_in, D_in, bias=False, device="cuda", dtype=torch.float16)
-        lin_layer = torch.nn.Linear(D_in, D_out, bias=False, device="cuda", dtype=torch.float16)
+        rms_layer = torch.nn.Linear(
+            D_in, D_in, bias=False, device="cuda", dtype=torch.float16
+        )
+        lin_layer = torch.nn.Linear(
+            D_in, D_out, bias=False, device="cuda", dtype=torch.float16
+        )
 
-        ms_fused   = bench_fn(lambda: llm_kernels.fused_rmsnorm_linear(x, w_norm, w_lin), warmup, reps)
+        ms_fused = bench_fn(
+            lambda: llm_kernels.fused_rmsnorm_linear(x, w_norm, w_lin), warmup, reps
+        )
         ms_unfused = bench_fn(lambda: lin_layer(rms_layer(x)), warmup, reps)
 
         speedup = ms_unfused / ms_fused
@@ -112,8 +127,10 @@ def bench_fused_rmsnorm(warmup, reps):
             "vs_baseline": f"{speedup:.2f}x vs unfused PyTorch",
         }
         results.append(row)
-        print(f"  B={B:4d} D={D_in:4d}: fused={ms_fused:.3f} ms  "
-              f"unfused={ms_unfused:.3f} ms  speedup={speedup:.2f}x")
+        print(
+            f"  B={B:4d} D={D_in:4d}: fused={ms_fused:.3f} ms  "
+            f"unfused={ms_unfused:.3f} ms  speedup={speedup:.2f}x"
+        )
 
     return results
 
@@ -121,6 +138,7 @@ def bench_fused_rmsnorm(warmup, reps):
 # ---------------------------------------------------------------------------
 # int8 GEMM + dequant
 # ---------------------------------------------------------------------------
+
 
 def bench_int8_gemm(warmup, reps):
     results = []
@@ -140,11 +158,12 @@ def bench_int8_gemm(warmup, reps):
 
         ms_int8 = bench_fn(
             lambda: llm_kernels.int8_gemm_dequant_fwd(A_q, B_q, scale_a, scale_b),
-            warmup, reps,
+            warmup,
+            reps,
         )
         ms_fp16 = bench_fn(lambda: A_fp @ B_fp, warmup, reps)
 
-        tops_int8 = ops / ms_int8 / 1e9   # TOPS
+        tops_int8 = ops / ms_int8 / 1e9  # TOPS
         tops_fp16 = ops / ms_fp16 / 1e9
 
         row = {
@@ -163,10 +182,13 @@ def bench_int8_gemm(warmup, reps):
 # Pretty-print table
 # ---------------------------------------------------------------------------
 
+
 def print_markdown_table(rows):
     header = ["Kernel", "Config", "Throughput", "vs Baseline"]
-    col_w  = [max(len(h), max(len(r[k]) for r in rows))
-              for h, k in zip(header, ["kernel", "config", "throughput", "vs_baseline"])]
+    col_w = [
+        max(len(h), max(len(r[k]) for r in rows))
+        for h, k in zip(header, ["kernel", "config", "throughput", "vs_baseline"])
+    ]
 
     def row_str(vals):
         return "| " + " | ".join(v.ljust(w) for v, w in zip(vals, col_w)) + " |"
@@ -184,16 +206,21 @@ def print_markdown_table(rows):
 # Main
 # ---------------------------------------------------------------------------
 
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--kernels", nargs="+",
-                        choices=["flash_attn", "rmsnorm", "int8_gemm"],
-                        default=["flash_attn", "rmsnorm", "int8_gemm"],
-                        help="Which kernels to benchmark")
+    parser.add_argument(
+        "--kernels",
+        nargs="+",
+        choices=["flash_attn", "rmsnorm", "int8_gemm"],
+        default=["flash_attn", "rmsnorm", "int8_gemm"],
+        help="Which kernels to benchmark",
+    )
     parser.add_argument("--warmup", type=int, default=10)
-    parser.add_argument("--reps",   type=int, default=100)
-    parser.add_argument("--out",    default="benchmarks/results.json",
-                        help="Path to save JSON results")
+    parser.add_argument("--reps", type=int, default=100)
+    parser.add_argument(
+        "--out", default="benchmarks/results.json", help="Path to save JSON results"
+    )
     args = parser.parse_args()
 
     if not torch.cuda.is_available():

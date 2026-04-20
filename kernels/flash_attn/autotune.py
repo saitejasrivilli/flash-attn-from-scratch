@@ -29,22 +29,20 @@ import torch
 # The configs we sweep
 BLOCK_SIZES = [32, 64, 128]
 WARMUP = 5
-REPS   = 30
+REPS = 30
 
 
 def _bench_config(q, k, v, block_m, block_n, causal):
     """Return ms/call for a given tile config, or inf if it errors."""
     from kernels.flash_attn.flash_attn_fwd import (
-        flash_attn_fwd_causal_kernel,
-        flash_attn_fwd_kernel,
-    )
+        flash_attn_fwd_causal_kernel, flash_attn_fwd_kernel)
 
     B, H, M, D = q.shape
     N = k.shape[2]
     if M % block_m != 0 or N % block_n != 0:
         return float("inf")
 
-    out  = torch.empty_like(q)
+    out = torch.empty_like(q)
     grid = (M // block_m, B * H)
     kernel = flash_attn_fwd_causal_kernel if causal else flash_attn_fwd_kernel
 
@@ -52,19 +50,41 @@ def _bench_config(q, k, v, block_m, block_n, causal):
         # Warmup: also triggers Triton JIT compilation
         for _ in range(WARMUP):
             kernel[grid](
-                q, k, v, out,
-                *q.stride(), *k.stride(), *v.stride(), *out.stride(),
-                B, H, M, N, D,
-                BLOCK_M=block_m, BLOCK_N=block_n,
+                q,
+                k,
+                v,
+                out,
+                *q.stride(),
+                *k.stride(),
+                *v.stride(),
+                *out.stride(),
+                B,
+                H,
+                M,
+                N,
+                D,
+                BLOCK_M=block_m,
+                BLOCK_N=block_n,
             )
         torch.cuda.synchronize()
         t0 = time.perf_counter()
         for _ in range(REPS):
             kernel[grid](
-                q, k, v, out,
-                *q.stride(), *k.stride(), *v.stride(), *out.stride(),
-                B, H, M, N, D,
-                BLOCK_M=block_m, BLOCK_N=block_n,
+                q,
+                k,
+                v,
+                out,
+                *q.stride(),
+                *k.stride(),
+                *v.stride(),
+                *out.stride(),
+                B,
+                H,
+                M,
+                N,
+                D,
+                BLOCK_M=block_m,
+                BLOCK_N=block_n,
             )
         torch.cuda.synchronize()
         return (time.perf_counter() - t0) * 1e3 / REPS
@@ -162,5 +182,6 @@ def load_best_config(seqlen: int, D: int = 64, causal: bool = True):
 
 if __name__ == "__main__":
     import sys
+
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
     autotune()

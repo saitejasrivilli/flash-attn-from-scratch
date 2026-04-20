@@ -13,6 +13,7 @@ import torch.nn.functional as F
 
 try:
     import llm_kernels_cuda as _ext  # compiled via setup.py
+
     _HAS_CUDA_EXT = True
 except ImportError:
     _HAS_CUDA_EXT = False
@@ -21,6 +22,7 @@ except ImportError:
 # ---------------------------------------------------------------------------
 # PyTorch reference implementation (always available)
 # ---------------------------------------------------------------------------
+
 
 def _rmsnorm_linear_ref(
     x: torch.Tensor,
@@ -38,6 +40,7 @@ def _rmsnorm_linear_ref(
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
 
 def fused_rmsnorm_linear(
     x: torch.Tensor,
@@ -72,12 +75,14 @@ def fused_rmsnorm_linear(
 if __name__ == "__main__":
     torch.manual_seed(0)
     B, D_in, D_out = 16, 512, 512
-    x      = torch.randn(B, D_in,       device="cuda", dtype=torch.float16)
-    w_norm = torch.ones(D_in,           device="cuda", dtype=torch.float16)
-    w_lin  = torch.randn(D_out, D_in,   device="cuda", dtype=torch.float16)
+    x = torch.randn(B, D_in, device="cuda", dtype=torch.float16)
+    w_norm = torch.ones(D_in, device="cuda", dtype=torch.float16)
+    w_lin = torch.randn(D_out, D_in, device="cuda", dtype=torch.float16)
 
     ref = _rmsnorm_linear_ref(x, w_norm, w_lin)
     out = fused_rmsnorm_linear(x, w_norm, w_lin)
 
     match = torch.allclose(ref.float(), out.float(), atol=1e-1)
-    print(f"[fused_ops] correctness={match}  cuda_ext={'yes' if _HAS_CUDA_EXT else 'no (fallback)'}")
+    print(
+        f"[fused_ops] correctness={match}  cuda_ext={'yes' if _HAS_CUDA_EXT else 'no (fallback)'}"
+    )

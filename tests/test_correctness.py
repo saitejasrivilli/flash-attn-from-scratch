@@ -9,10 +9,11 @@ Run with:
 All tests skip automatically if CUDA is unavailable (e.g., CI on CPU).
 """
 
+import os
+import sys
+
 import pytest
 import torch
-import sys
-import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import llm_kernels
@@ -27,6 +28,7 @@ cuda_required = pytest.mark.skipif(
 # Flash Attention
 # ---------------------------------------------------------------------------
 
+
 class TestFlashAttention:
 
     @cuda_required
@@ -40,8 +42,9 @@ class TestFlashAttention:
         ref = torch.nn.functional.scaled_dot_product_attention(q, k, v, is_causal=False)
         out = llm_kernels.flash_attn_forward(q, k, v, causal=False)
 
-        assert torch.allclose(ref, out, atol=1e-2), \
-            f"Non-causal max err: {(ref - out).abs().max():.4f}"
+        assert torch.allclose(
+            ref, out, atol=1e-2
+        ), f"Non-causal max err: {(ref - out).abs().max():.4f}"
 
     @cuda_required
     def test_causal_correctness(self):
@@ -54,8 +57,9 @@ class TestFlashAttention:
         ref = torch.nn.functional.scaled_dot_product_attention(q, k, v, is_causal=True)
         out = llm_kernels.flash_attn_forward(q, k, v, causal=True)
 
-        assert torch.allclose(ref, out, atol=1e-2), \
-            f"Causal max err: {(ref - out).abs().max():.4f}"
+        assert torch.allclose(
+            ref, out, atol=1e-2
+        ), f"Causal max err: {(ref - out).abs().max():.4f}"
 
     @cuda_required
     def test_output_shape(self):
@@ -80,6 +84,7 @@ class TestFlashAttention:
 # Fused RMSNorm + Linear
 # ---------------------------------------------------------------------------
 
+
 class TestFusedRMSNormLinear:
 
     def _ref(self, x, w_norm, w_lin, eps=1e-6):
@@ -92,30 +97,31 @@ class TestFusedRMSNormLinear:
     def test_correctness(self):
         torch.manual_seed(3)
         B, D_in, D_out = 64, 512, 512
-        x      = torch.randn(B, D_in,       device="cuda", dtype=torch.float16)
-        w_norm = torch.ones(D_in,           device="cuda", dtype=torch.float16)
-        w_lin  = torch.randn(D_out, D_in,   device="cuda", dtype=torch.float16)
+        x = torch.randn(B, D_in, device="cuda", dtype=torch.float16)
+        w_norm = torch.ones(D_in, device="cuda", dtype=torch.float16)
+        w_lin = torch.randn(D_out, D_in, device="cuda", dtype=torch.float16)
 
         ref = self._ref(x, w_norm, w_lin)
         out = llm_kernels.fused_rmsnorm_linear(x, w_norm, w_lin)
 
-        assert torch.allclose(ref.float(), out.float(), atol=1e-1), \
-            f"FusedRMSNorm max err: {(ref.float() - out.float()).abs().max():.4f}"
+        assert torch.allclose(
+            ref.float(), out.float(), atol=1e-1
+        ), f"FusedRMSNorm max err: {(ref.float() - out.float()).abs().max():.4f}"
 
     @cuda_required
     def test_output_shape(self):
         B, D_in, D_out = 16, 256, 512
-        x     = torch.randn(B, D_in,      device="cuda", dtype=torch.float16)
-        w_n   = torch.ones(D_in,          device="cuda", dtype=torch.float16)
-        w_l   = torch.randn(D_out, D_in,  device="cuda", dtype=torch.float16)
-        out   = llm_kernels.fused_rmsnorm_linear(x, w_n, w_l)
+        x = torch.randn(B, D_in, device="cuda", dtype=torch.float16)
+        w_n = torch.ones(D_in, device="cuda", dtype=torch.float16)
+        w_l = torch.randn(D_out, D_in, device="cuda", dtype=torch.float16)
+        out = llm_kernels.fused_rmsnorm_linear(x, w_n, w_l)
         assert out.shape == (B, D_out)
 
     @cuda_required
     def test_module_wrapper(self):
         torch.manual_seed(4)
         B, D_in, D_out = 8, 256, 128
-        x   = torch.randn(B, D_in, device="cuda", dtype=torch.float16)
+        x = torch.randn(B, D_in, device="cuda", dtype=torch.float16)
         mod = llm_kernels.FusedRMSNormLinear(D_in, D_out).cuda()
         out = mod(x)
         assert out.shape == (B, D_out)
@@ -124,6 +130,7 @@ class TestFusedRMSNormLinear:
 # ---------------------------------------------------------------------------
 # int8 GEMM + dequant
 # ---------------------------------------------------------------------------
+
 
 class TestInt8Gemm:
 
@@ -144,7 +151,7 @@ class TestInt8Gemm:
         x_q, scale = llm_kernels.quantize_symmetric(x)
         assert x_q.dtype == torch.int8
         assert scale.dtype == torch.float32
-        assert x_q.shape  == x.shape
+        assert x_q.shape == x.shape
         assert scale.shape == (32,)
         # Values should be bounded
         assert x_q.abs().max() <= 127
@@ -171,9 +178,9 @@ class TestInt8Gemm:
     def test_module_wrapper(self):
         torch.manual_seed(6)
         B, D_in, D_out = 4, 256, 128
-        x       = torch.randn(B, D_in, device="cuda", dtype=torch.float16)
-        w_fp    = torch.randn(D_out, D_in, device="cuda", dtype=torch.float16)
-        layer   = llm_kernels.Int8Linear(D_in, D_out)
+        x = torch.randn(B, D_in, device="cuda", dtype=torch.float16)
+        w_fp = torch.randn(D_out, D_in, device="cuda", dtype=torch.float16)
+        layer = llm_kernels.Int8Linear(D_in, D_out)
         layer.quantize_weights(w_fp)
         out = layer(x)
         assert out.shape == (B, D_out)

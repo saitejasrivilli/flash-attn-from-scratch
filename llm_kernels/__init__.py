@@ -21,11 +21,11 @@ import torch.nn as nn
 
 # ── bare kernel functions ──────────────────────────────────────────────────
 from kernels.flash_attn import flash_attn_forward
-from kernels.int8_gemm import int8_gemm_dequant_fwd, quantize_symmetric
 from kernels.fused_rmsnorm_linear import fused_rmsnorm_linear
-
+from kernels.int8_gemm import int8_gemm_dequant_fwd, quantize_symmetric
 
 # ── nn.Module wrappers ─────────────────────────────────────────────────────
+
 
 class FlashAttention(nn.Module):
     """
@@ -37,13 +37,16 @@ class FlashAttention(nn.Module):
 
     def __init__(self, causal: bool = True, block_m: int = 64, block_n: int = 64):
         super().__init__()
-        self.causal  = causal
+        self.causal = causal
         self.block_m = block_m
         self.block_n = block_n
 
-    def forward(self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
-        return flash_attn_forward(q, k, v, causal=self.causal,
-                                  block_m=self.block_m, block_n=self.block_n)
+    def forward(
+        self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor
+    ) -> torch.Tensor:
+        return flash_attn_forward(
+            q, k, v, causal=self.causal, block_m=self.block_m, block_n=self.block_n
+        )
 
     def extra_repr(self) -> str:
         return f"causal={self.causal}, block_m={self.block_m}, block_n={self.block_n}"
@@ -62,12 +65,12 @@ class FusedRMSNormLinear(nn.Module):
 
     def __init__(self, d_in: int, d_out: int, eps: float = 1e-6):
         super().__init__()
-        self.d_in  = d_in
+        self.d_in = d_in
         self.d_out = d_out
-        self.eps   = eps
-        self.w_norm = nn.Parameter(torch.ones(d_in,         dtype=torch.float16))
-        self.w_lin  = nn.Parameter(torch.empty(d_out, d_in, dtype=torch.float16))
-        nn.init.kaiming_uniform_(self.w_lin, a=5 ** 0.5)
+        self.eps = eps
+        self.w_norm = nn.Parameter(torch.ones(d_in, dtype=torch.float16))
+        self.w_lin = nn.Parameter(torch.empty(d_out, d_in, dtype=torch.float16))
+        nn.init.kaiming_uniform_(self.w_lin, a=5**0.5)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return fused_rmsnorm_linear(x, self.w_norm, self.w_lin, self.eps)
@@ -90,11 +93,11 @@ class Int8Linear(nn.Module):
 
     def __init__(self, d_in: int, d_out: int):
         super().__init__()
-        self.d_in  = d_in
+        self.d_in = d_in
         self.d_out = d_out
         # Buffers aren't parameters — won't appear in optimizer state.
-        self.register_buffer("w_q",     torch.zeros(d_out, d_in, dtype=torch.int8))
-        self.register_buffer("scale_w", torch.ones(d_out,        dtype=torch.float32))
+        self.register_buffer("w_q", torch.zeros(d_out, d_in, dtype=torch.int8))
+        self.register_buffer("scale_w", torch.ones(d_out, dtype=torch.float32))
 
     @torch.no_grad()
     def quantize_weights(self, w: torch.Tensor):
@@ -109,9 +112,9 @@ class Int8Linear(nn.Module):
         # A=[B, D_in], B=[D_in, D_out] — need B in [K, N] layout
         return int8_gemm_dequant_fwd(
             x_q,
-            self.w_q.T.contiguous(),   # [D_in, D_out]
-            scale_x,                    # [B]    per-row of activations
-            self.scale_w,               # [D_out] per-row of W (= per-col of W^T)
+            self.w_q.T.contiguous(),  # [D_in, D_out]
+            scale_x,  # [B]    per-row of activations
+            self.scale_w,  # [D_out] per-row of W (= per-col of W^T)
         )
 
     def extra_repr(self) -> str:
