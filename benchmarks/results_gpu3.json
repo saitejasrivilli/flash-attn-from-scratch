@@ -1,0 +1,65 @@
+{
+  "device": "NVIDIA A30",
+  "results": [
+    {
+      "kernel": "Flash Attention (Triton)",
+      "config": "B=2 H=16 seqlen=512 D=64",
+      "throughput": "13.2 TFLOP/s",
+      "vs_baseline": "52% of torch SDPA"
+    },
+    {
+      "kernel": "Flash Attention (Triton)",
+      "config": "B=2 H=16 seqlen=1024 D=64",
+      "throughput": "39.4 TFLOP/s",
+      "vs_baseline": "118% of torch SDPA"
+    },
+    {
+      "kernel": "Flash Attention (Triton)",
+      "config": "B=2 H=16 seqlen=2048 D=64",
+      "throughput": "51.6 TFLOP/s",
+      "vs_baseline": "109% of torch SDPA"
+    },
+    {
+      "kernel": "Flash Attention (Triton)",
+      "config": "B=2 H=16 seqlen=4096 D=64",
+      "throughput": "59.7 TFLOP/s",
+      "vs_baseline": "102% of torch SDPA"
+    },
+    {
+      "kernel": "Fused RMSNorm+Linear (CUDA)",
+      "config": "B=512 D_in=4096 D_out=4096",
+      "throughput": "0.761 ms",
+      "vs_baseline": "0.70x vs unfused PyTorch"
+    },
+    {
+      "kernel": "Fused RMSNorm+Linear (CUDA)",
+      "config": "B=128 D_in=8192 D_out=8192",
+      "throughput": "0.581 ms",
+      "vs_baseline": "0.96x vs unfused PyTorch"
+    },
+    {
+      "kernel": "Fused RMSNorm+Linear (CUDA)",
+      "config": "B=1024 D_in=2048 D_out=2048",
+      "throughput": "0.489 ms",
+      "vs_baseline": "0.55x vs unfused PyTorch"
+    },
+    {
+      "kernel": "int8 GEMM+dequant (Triton)",
+      "config": "M=N=K=1024",
+      "throughput": "19.2 TOPS",
+      "vs_baseline": "fp16 cublas: 26.1 TOPS"
+    },
+    {
+      "kernel": "int8 GEMM+dequant (Triton)",
+      "config": "M=N=K=2048",
+      "throughput": "29.5 TOPS",
+      "vs_baseline": "fp16 cublas: 42.7 TOPS"
+    },
+    {
+      "kernel": "int8 GEMM+dequant (Triton)",
+      "config": "M=N=K=4096",
+      "throughput": "32.6 TOPS",
+      "vs_baseline": "fp16 cublas: 58.2 TOPS"
+    }
+  ]
+}

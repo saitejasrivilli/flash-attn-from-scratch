@@ -1,0 +1,23 @@
+{
+  "device": "NVIDIA A30",
+  "results": [
+    {
+      "kernel": "int8 GEMM+dequant (Triton)",
+      "config": "M=N=K=1024",
+      "throughput": "8.9 TOPS",
+      "vs_baseline": "fp16 cublas: 56.4 TOPS"
+    },
+    {
+      "kernel": "int8 GEMM+dequant (Triton)",
+      "config": "M=N=K=2048",
+      "throughput": "91.2 TOPS",
+      "vs_baseline": "fp16 cublas: 76.3 TOPS"
+    },
+    {
+      "kernel": "int8 GEMM+dequant (Triton)",
+      "config": "M=N=K=4096",
+      "throughput": "101.7 TOPS",
+      "vs_baseline": "fp16 cublas: 110.9 TOPS"
+    }
+  ]
+}

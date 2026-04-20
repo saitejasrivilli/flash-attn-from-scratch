@@ -1,0 +1,27 @@
+{
+  "device": "NVIDIA A30",
+  "D": 64,
+  "causal": true,
+  "configs": {
+    "512": {
+      "block_m": null,
+      "block_n": null,
+      "ms": Infinity
+    },
+    "1024": {
+      "block_m": null,
+      "block_n": null,
+      "ms": Infinity
+    },
+    "2048": {
+      "block_m": null,
+      "block_n": null,
+      "ms": Infinity
+    },
+    "4096": {
+      "block_m": null,
+      "block_n": null,
+      "ms": Infinity
+    }
+  }
+}

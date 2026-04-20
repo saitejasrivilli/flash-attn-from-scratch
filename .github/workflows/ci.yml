@@ -1,0 +1,130 @@
+# .github/workflows/ci.yml
+#
+# CI for llm-kernel-lib
+# ======================
+# Two jobs:
+#   lint  — runs on every push, no GPU needed
+#   test  — runs on every push to main/PR, requires a self-hosted A30 runner
+#           labelled [self-hosted, gpu, sm86]
+#
+# Self-hosted runner setup (one-time, on your A30 machine):
+#   https://docs.github.com/en/actions/hosting-your-own-runners/adding-self-hosted-runners
+#
+# If you don't have a self-hosted runner yet, the test job is skipped
+# automatically (the job will just queue forever until a runner is available,
+# or you can comment it out and run tests manually).
+
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main]
+
+# Cancel in-progress runs on the same branch when a new push arrives
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# ──────────────────────────────────────────────────────────────────────────
+# Job 1: Lint (CPU, GitHub-hosted)
+# ──────────────────────────────────────────────────────────────────────────
+jobs:
+  lint:
+    name: Lint (black + isort)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+
+      - name: Install linters
+        run: pip install black isort
+
+      - name: black check
+        run: black --check --diff kernels/ llm_kernels/ benchmarks/ tests/
+
+      - name: isort check
+        run: isort --check-only --diff kernels/ llm_kernels/ benchmarks/ tests/
+
+# ──────────────────────────────────────────────────────────────────────────
+# Job 2: Build + Test (GPU, self-hosted A30 runner)
+# ──────────────────────────────────────────────────────────────────────────
+  test:
+    name: Build & Test (A30, SM86)
+    runs-on: [self-hosted, gpu, sm86]
+    needs: lint          # only run if lint passes
+
+    env:
+      TORCH_CUDA_ARCH_LIST: "8.6"
+      # Triton cache lives here — persist between runs via the cache action
+      TRITON_CACHE_DIR: /tmp/triton_cache
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── Restore Triton JIT cache ────────────────────────────────────────
+      - name: Cache Triton kernels
+        uses: actions/cache@v4
+        with:
+          path: /tmp/triton_cache
+          key: triton-${{ runner.os }}-${{ hashFiles('kernels/**/*.py') }}
+          restore-keys: triton-${{ runner.os }}-
+
+      # ── Python / pip setup ──────────────────────────────────────────────
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+
+      - name: Install Python dependencies
+        run: |
+          pip install torch==2.2.0 triton==2.2.0 ninja packaging pytest tabulate
+
+      # ── Build CUDA extension ─────────────────────────────────────────────
+      - name: Build CUDA extension
+        run: |
+          pip install -e . --no-build-isolation
+          python -c "import llm_kernels_cuda; print('CUDA extension OK')"
+
+      # ── Verify GPU is visible ────────────────────────────────────────────
+      - name: GPU info
+        run: |
+          python -c "
+          import torch
+          print(f'GPU: {torch.cuda.get_device_name(0)}')
+          print(f'CUDA: {torch.version.cuda}')
+          print(f'SM: {torch.cuda.get_device_capability()}')
+          "
+
+      # ── Run correctness tests ─────────────────────────────────────────────
+      - name: pytest — correctness
+        run: |
+          pytest tests/test_correctness.py -v --tb=short 2>&1 | tee test_results.txt
+          # Exit with pytest's exit code (tee swallows it otherwise)
+          exit ${PIPESTATUS[0]}
+
+      # ── Quick smoke benchmark (wall-clock, not for perf regression) ───────
+      - name: Smoke benchmark
+        run: |
+          python benchmarks/run_all.py \
+            --warmup 5 --reps 20 \
+            --out /tmp/bench_results.json
+          cat /tmp/bench_results.json
+
+      # ── Upload artefacts ──────────────────────────────────────────────────
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ github.sha }}
+          path: |
+            test_results.txt
+            /tmp/bench_results.json
