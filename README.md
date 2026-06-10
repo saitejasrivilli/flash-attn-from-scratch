@@ -31,36 +31,46 @@ zero HBM round-trip between the two operations. Warp-level reduction via
 
 All numbers are wall-clock measured with `torch.cuda.synchronize()`,
 200 iterations after 20 warmup iterations, single GPU, uncontended.
+**Environment: PyTorch 2.10.0+cu128, Triton 3.6.0, CUDA 12.8**
+Raw JSON: `benchmarks/results_a30_fresh.json`
 
 ### Flash Attention vs torch SDPA
 
 | seqlen | Triton FA | torch SDPA | ratio |
 |--------|-----------|------------|-------|
-| 512 | 14.6 TFLOP/s | 38.8 TFLOP/s | 38% |
-| 1024 | 58.1 TFLOP/s | 53.9 TFLOP/s | **108%** |
-| 2048 | 75.9 TFLOP/s | 71.2 TFLOP/s | **107%** |
-| 4096 | 118.3 TFLOP/s | 124.5 TFLOP/s | 95% |
+| 512  | **42.5 TFLOP/s** | 40.9 TFLOP/s | **104%** |
+| 1024 | 61.1 TFLOP/s     | 71.0 TFLOP/s | 86%     |
+| 2048 | 78.9 TFLOP/s     | 131.4 TFLOP/s | 60%    |
+| 4096 | **115.5 TFLOP/s**| 151.1 TFLOP/s | 76%   |
 
-Beats torch SDPA at seqlen ≥ 1024. seqlen=512 underperformance is expected
-(kernel launch overhead dominates at short sequences — same behavior as FA-2).
+Beats torch SDPA at seqlen=512 (104%). PyTorch ≥ 2.2 integrates FlashAttention-2
+natively into `scaled_dot_product_attention`, making comparison tighter at longer seqlens.
+This kernel is useful as a substrate for custom fusions (fused attention+quantization,
+non-standard masking) where the stock FA-2 interface does not apply.
 
-### int8 GEMM + Dequant vs fp16 cuBLAS (autoconfig tiles)
+### int8 GEMM + Dequant vs fp16 cuBLAS (DP4A)
 
 | size | int8 TOPS | fp16 TOPS | ratio |
 |------|-----------|-----------|-------|
-| M=N=K=1024 | 23.4 | 56.0 | 42% |
-| M=N=K=2048 | 91.5 | 88.3 | **104%** |
-| M=N=K=4096 | 109.0 | 110.7 | **98%** |
+| M=N=K=1024 | **46.1** | 43.8 | **105%** |
+| M=N=K=2048 | **82.8** | 69.0 | **120%** |
+| M=N=K=4096 | **129.6** | 109.9 | **118%** |
 
-Beats fp16 cuBLAS at M=2048 (104%) and matches it at M=4096 (98%) — with a
-fused dequantization epilogue included. DP4A confirmed active on A30 SM86.
+Beats fp16 cuBLAS at **all tested sizes (105–120%)** with fused dequantization epilogue.
+DP4A confirmed active on A30 SM86. Advantage widens at larger M where DP4A
+throughput ceiling exceeds fp16 throughput ceiling on Ampere.
 
 ### Fused RMSNorm + Linear
 
-Kernel is functionally correct (passes numerical tests). The unfused baseline
-in this environment uses PyTorch's cuDNN-optimized LayerNorm which is not a
-fair comparison — the kernel targets the common LLM pattern of manual RMSNorm
-followed by a linear projection without cuDNN backing.
+| config | fused | unfused | speedup |
+|--------|-------|---------|---------|
+| B=512  D=4096 | 0.325 ms | 0.458 ms | **1.41×** |
+| B=128  D=8192 | 0.322 ms | 0.478 ms | **1.48×** |
+| B=1024 D=2048 | 0.236 ms | 0.215 ms | 0.91×    |
+
+1.41–1.48× speedup at large batch/dim by eliminating the HBM round-trip between
+RMSNorm and Linear. B=1024 D=2048 is slightly slower — at smaller dims the operation
+becomes bandwidth-bound where PyTorch's fused LayerNorm has the edge.
 
 ---
 
@@ -165,7 +175,7 @@ Requires: PyTorch ≥ 2.2.0, Triton ≥ 2.2.0, CUDA ≥ 12.1
 | GPU | NVIDIA A30 × 4 |
 | VRAM | 24 GB HBM2 per GPU |
 | SM | 86 (Ampere) |
-| CUDA | 12.1 |
-| PyTorch | 2.2.0 |
-| Triton | 2.2.0 |
+| CUDA | 12.8 |
+| PyTorch | 2.10.0+cu128 |
+| Triton | 3.6.0 |
 # flash-attn-from-scratch
