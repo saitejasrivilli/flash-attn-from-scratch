@@ -1,0 +1,15 @@
+{
+  "device": "NVIDIA A30",
+  "sm": "80",
+  "warmup": 20,
+  "iters": 100,
+  "results": [
+    {"M":1,"N":4096,"K":4096,"cutlass_gflops":279.4,"cublas_gflops":643.3,"speedup":0.4344,"correct":true},
+    {"M":8,"N":4096,"K":4096,"cutlass_gflops":2235.2,"cublas_gflops":5738.7,"speedup":0.3895,"correct":true},
+    {"M":32,"N":4096,"K":4096,"cutlass_gflops":8972.9,"cublas_gflops":22559.7,"speedup":0.3977,"correct":true},
+    {"M":128,"N":4096,"K":4096,"cutlass_gflops":27451.4,"cublas_gflops":52213.4,"speedup":0.5258,"correct":true},
+    {"M":512,"N":4096,"K":4096,"cutlass_gflops":55599.7,"cublas_gflops":67467.8,"speedup":0.8241,"correct":true},
+    {"M":128,"N":4096,"K":11008,"cutlass_gflops":28300.8,"cublas_gflops":73401.0,"speedup":0.3856,"correct":true},
+    {"M":128,"N":11008,"K":4096,"cutlass_gflops":70455.6,"cublas_gflops":73257.9,"speedup":0.9617,"correct":true}
+  ]
+}
