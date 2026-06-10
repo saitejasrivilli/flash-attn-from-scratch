@@ -1,0 +1,32 @@
+{
+  "device": "NVIDIA A30 (SM86, 24 GB HBM2)",
+  "cuda_version": "12.8",
+  "pytorch_version": "2.10.0+cu128",
+  "triton_version": "3.6.0",
+  "warmup_iters": 20,
+  "benchmark_iters": 200,
+  "timestamp": "2026-06-10",
+  "results": {
+    "flash_attention_triton_vs_sdpa": [
+      {"seqlen": 512,  "triton_tflops": 42.5, "sdpa_tflops": 40.9,  "ratio_pct": 104},
+      {"seqlen": 1024, "triton_tflops": 61.1, "sdpa_tflops": 71.0,  "ratio_pct": 86},
+      {"seqlen": 2048, "triton_tflops": 78.9, "sdpa_tflops": 131.4, "ratio_pct": 60},
+      {"seqlen": 4096, "triton_tflops": 115.5,"sdpa_tflops": 151.1, "ratio_pct": 76}
+    ],
+    "fused_rmsnorm_linear": [
+      {"config": "B=512  D=4096", "fused_ms": 0.325, "unfused_ms": 0.458, "speedup": 1.41},
+      {"config": "B=128  D=8192", "fused_ms": 0.322, "unfused_ms": 0.478, "speedup": 1.48},
+      {"config": "B=1024 D=2048", "fused_ms": 0.236, "unfused_ms": 0.215, "speedup": 0.91}
+    ],
+    "int8_gemm_dequant_vs_fp16_cublas": [
+      {"size": 1024, "int8_tops": 46.1,  "fp16_tops": 43.8,  "ratio_pct": 105},
+      {"size": 2048, "int8_tops": 82.8,  "fp16_tops": 69.0,  "ratio_pct": 120},
+      {"size": 4096, "int8_tops": 129.6, "fp16_tops": 109.9, "ratio_pct": 118}
+    ]
+  },
+  "notes": {
+    "flash_attention": "Triton kernel beats torch SDPA at seqlen=512 (104%). PyTorch 2.10 SDPA uses FA-2 natively, making comparison tighter at longer seqlens. Kernel is still meaningful for custom fusions.",
+    "int8_gemm": "Triton int8 GEMM with DP4A beats fp16 cuBLAS at all tested sizes (105-120%). DP4A throughput advantage shows clearly at M>=1024.",
+    "fused_rmsnorm": "1.41-1.48x speedup at large batch/dim. B=1024 D=2048 slightly slower (0.91x) -- HBM bandwidth vs compute balance shifts at smaller dims."
+  }
+}
